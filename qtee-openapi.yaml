@@ -1,0 +1,206 @@
+openapi: 3.0.0
+info:
+  title: Q-TEE API
+  description: |
+    The Q-TEE API provides a RESTful interface to submit quantum evaluation requests and check job statuses.
+    Built with Flask, it handles concurrent processing using threads and manages job scheduling with APScheduler.
+  version: 1.0.1
+
+servers:
+  - url: https://api.q-tee.com
+    description: Production server
+
+paths:
+  /qtee:
+    post:
+      summary: Submit a quantum evaluation request
+      description: |
+        Submits a quantum evaluation with an ansatz in QASM format and an operator_pauli_list for the quantum computation.
+        The endpoint returns an `experiment_ID` that can be used to monitor the evaluation status via `/qtee-results`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ansatz:
+                  type: string
+                  description: Quantum circuit in QASM format
+                  example: "OPENQASM 3.0; qreg q[2]; h q[0]; cx q[0], q[1];"
+                operator_pauli_list:
+                  type: array
+                  description: List of Pauli operators representing the operator
+                  items:
+                    type: string
+                  example: ["X", "Y", "Z"]
+                coefficients:
+                  type: array
+                  description: Coefficients associated with each Pauli operator
+                  items:
+                    type: number
+                  example: [0.5, 0.5, 1.0]
+                noise_model:
+                  type: string
+                  description: |
+                    Noise model for simulation. Set to 'none' for an ideal simulation or specify a model for realistic conditions.
+                  example: "ibm_melbourne"
+                n_evaluations:
+                  type: integer
+                  description: Number of times to repeat the simulation
+                  default: 500
+                shots:
+                  type: integer
+                  description: Number of shots per evaluation
+                  default: 4096
+      responses:
+        '200':
+          description: Quantum evaluation request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  experiment_ID:
+                    type: string
+                    description: Unique identifier for the submitted experiment
+                    example: "4eb2fbeb4a5d47a5feb2a571034acc1a22eea23e68c37fe6f4e8ee3fb00ad061"
+        '400':
+          description: Bad Request - Missing required parameters 'ansatz' and 'operator_pauli_list'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid request, parameters 'ansatz' and 'operator_pauli_list' are required"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Unknown error"
+
+  /qtee-results:
+    post:
+      summary: Check the status of a quantum evaluation job
+      description: |
+        Checks the status of an evaluation job using an `experiment_ID`. The status can be "PENDING" if the job is still in progress or "DONE" if completed.
+        When complete, the final metrics and results are included in the response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                experiment_ID:
+                  type: string
+                  description: Unique identifier for the experiment
+                  example: "4eb2fbeb4a5d47a5feb2a571034acc1a22eea23e68c37fe6f4e8ee3fb00ad061"
+                verbose:
+                  type: boolean
+                  description: If true, includes detailed results in the response
+                  example: true
+      responses:
+        '200':
+          description: Status of the quantum evaluation job retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: Current status of the job (PENDING or DONE)
+                    example: "DONE"
+                  metrics:
+                    type: object
+                    description: Key statistical metrics from the evaluation
+                    properties:
+                      Media:
+                        type: number
+                        description: Mean expected value across evaluations
+                        example: 1.234
+                      std:
+                        type: number
+                        description: Standard deviation of expected values
+                        example: 0.567
+                      range:
+                        type: object
+                        properties:
+                          min:
+                            type: number
+                            example: 0.987
+                          max:
+                            type: number
+                            example: 1.456
+                  results:
+                    type: array
+                    description: Detailed results of each evaluation (only present if verbose is true)
+                    items:
+                      type: number
+                    example: [1.234, 1.235, 1.237]
+        '400':
+          description: Bad Request - Missing required parameter 'experiment_ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid request, parameter 'experiment_ID' is required"
+        '404':
+          description: Experiment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Experiment does not exist"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Unknown error"
+
+components:
+  schemas:
+    QuantumEvaluation:
+      type: object
+      properties:
+        ansatz:
+          type: string
+          description: Quantum circuit in QASM format
+        operator_pauli_list:
+          type: array
+          items:
+            type: string
+          description: List of Pauli operators representing the operator
+        coefficients:
+          type: array
+          items:
+            type: number
+          description: Coefficients for the Pauli operators
+        noise_model:
+          type: string
+          description: Specifies the noise model (e.g., 'none' or specific IBM noise model)
+        n_evaluations:
+          type: integer
+          description: Number of evaluations (default: 500)
+        shots:
+          type: integer
+          description: Number of shots per evaluation (default: 4096)
